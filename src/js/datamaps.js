@@ -193,6 +193,41 @@
         return feature.id !== "ATA";
       });
     }
+    geoData.forEach(function(entry) {
+      entry.geometry.coordinates.forEach(function(subEntry) {
+        subEntry.forEach(function(subSubEntry) {
+          subSubEntry.reverse();
+
+          if (entry.properties.iso === "Kosovo_line") {
+            subSubEntry.unshift.apply(subSubEntry, subSubEntry.slice(-2));
+            subSubEntry.pop();
+          } else if (entry.properties.iso === "Korea_line") {
+            subSubEntry.unshift.apply(subSubEntry, subSubEntry.slice(-3));
+            subSubEntry.splice(subSubEntry.length - 2, 2);
+          } else if (entry.properties.iso === "Palestine_line") {
+            subSubEntry.unshift.apply(subSubEntry, subSubEntry.slice(-6));
+            subSubEntry.splice(subSubEntry.length - 5, 5);
+          } else if (entry.properties.iso === "Chinese_line") {
+            subSubEntry.push(subSubEntry.shift());
+            subSubEntry.push(subSubEntry[0]);
+          } else if (entry.properties.iso === "Indian_line") {
+            subSubEntry.push(subSubEntry.shift());
+            subSubEntry.push(subSubEntry[0]);
+          } else if (entry.properties.iso === "Jaka2_line") {
+            subSubEntry.push(subSubEntry.shift());
+            subSubEntry.push(subSubEntry[0]);
+          } else if (entry.properties.iso === "Abyei2_line") {
+            subSubEntry.push(subSubEntry[0]);
+          } else if (entry.properties.iso === "Abyei4_line") {
+            subSubEntry.push(subSubEntry.shift());
+            subSubEntry.push(subSubEntry[0]);
+          }
+        })
+      })
+    });
+    geoData.sort(function(entryA, entryB) {
+      return entryA.properties.isLine - entryB.properties.isLine;
+    });
 
     if ( geoConfig.hideHawaiiAndAlaska ) {
       geoData = geoData.filter(function(feature) {
@@ -201,15 +236,35 @@
     }
 
     var geo = subunits.selectAll('path.datamaps-subunit').data( geoData );
+    var pathFunc = this.path;
+    var _firstLine = null;
 
     geo.enter()
       .append('path')
-      .attr('d', this.path)
+      .attr("d", function(d) {
+        // Remove the arc from the last to the first vertex for border figures
+        var res = pathFunc(d);
+        if (d.properties.isLine === 1) {
+          res = res.replace("Z", "");
+
+          if (!_firstLine) {
+            _firstLine = this;
+          }
+        }
+
+        return res;
+      })
       .attr('class', function(d) {
+        if (d.properties.isLine)
+          return "datamaps-subunit disputed-boundary " + d.id;
+
         return 'datamaps-subunit ' + d.id;
       })
       .attr('data-info', function(d) {
-        return JSON.stringify( colorCodeData[d.id]);
+        return JSON.stringify(colorCodeData[d.id]);
+      })
+      .style("pointer-events", function(d) {
+        return d.properties.isLine || d.properties.disabled ? "none" : "auto";
       })
       .style('fill', function(d) {
         // If fillKey - use that
@@ -218,19 +273,36 @@
         var fillColor;
 
         var datum = colorCodeData[d.id];
-        if ( datum && datum.fillKey ) {
-          fillColor = fillData[ val(datum.fillKey, {data: colorCodeData[d.id], geography: d}) ];
+        if (datum && datum.fillKey) {
+          fillColor =
+            fillData[
+              val(datum.fillKey, { data: colorCodeData[d.id], geography: d })
+            ];
         }
 
-        if ( typeof fillColor === 'undefined' ) {
-          fillColor = val(datum && datum.fillColor, fillData.defaultFill, {data: colorCodeData[d.id], geography: d});
+        if (typeof fillColor === "undefined") {
+          fillColor = val(datum && datum.fillColor, fillData.defaultFill, {
+            data: colorCodeData[d.id],
+            geography: d
+          });
         }
 
         return fillColor;
       })
       .style('stroke-width', geoConfig.borderWidth)
       .style('stroke-opacity', geoConfig.borderOpacity)
-      .style('stroke', geoConfig.borderColor);
+      .style("stroke", function(d) {
+        // Use different color for border figures
+        return d.properties.isLine === 1 ? "#000000" : geoConfig.borderColor;
+      })
+      .style("fill-opacity", function(d) {
+        return d.properties.isLine === 1 ? 0 : 1.0;
+      })
+      .style("stroke-dasharray", function(d) {
+        return d.properties.isLine === 1 ? 3 : null;
+      });
+
+    this._firstLine = _firstLine;
   }
 
   function handleGeographyConfig () {
@@ -238,6 +310,7 @@
     var svg = this.svg;
     var self = this;
     var options = this.options.geographyConfig;
+    var _firstLine = this._firstLine;
 
     if ( options.highlightOnHover || options.popupOnHover ) {
       svg.selectAll('.datamaps-subunit')
@@ -279,7 +352,8 @@
     }
 
     function moveToFront() {
-      this.parentNode.appendChild(this);
+      if (_firstLine) _firstLine.before(this);
+      else this.parentNode.appendChild(this);
     }
   }
 
